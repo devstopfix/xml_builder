@@ -25,7 +25,7 @@ defmodule XmlBuilder do
   end
 
   defmacrop is_blank_list(list) do
-    quote do: is_nil(unquote(list)) or (is_list(unquote(list)) and length(unquote(list)) == 0)
+    quote do: is_nil(unquote(list)) or (is_list(unquote(list)) and unquote(list) == [])
   end
 
   defmacrop is_blank_map(map) do
@@ -381,23 +381,26 @@ defmodule XmlBuilder do
     end
   end
 
-  defp escape({:cdata, data}) do
-    ["<![CDATA[", data, "]]>"]
-  end
+  defp escape({:cdata, data}), do: ["<![CDATA[", data, "]]>"]
+
+  defp escape(data) when is_binary(data),
+    do: data |> escape_string() |> to_string()
 
   defp escape(data) when not is_bitstring(data),
-    do: escape(to_string(data))
+    do: data |> to_string() |> escape_string() |> to_string()
 
-  defp escape(string) do
-    string
-    |> String.replace(">", "&gt;")
-    |> String.replace("<", "&lt;")
-    |> String.replace(~s|"|, "&quot;")
-    |> String.replace("'", "&apos;")
-    |> replace_ampersand
-  end
+  defp escape_string(""), do: ""
+  defp escape_string(<<"&"::utf8, rest::binary>>), do: escape_entity(rest)
+  defp escape_string(<<"<"::utf8, rest::binary>>), do: ["&lt;" | escape_string(rest)]
+  defp escape_string(<<">"::utf8, rest::binary>>), do: ["&gt;" | escape_string(rest)]
+  defp escape_string(<<"\""::utf8, rest::binary>>), do: ["&quot;" | escape_string(rest)]
+  defp escape_string(<<"'"::utf8, rest::binary>>), do: ["&apos;" | escape_string(rest)]
+  defp escape_string(<<c::utf8, rest::binary>>), do: [c | escape_string(rest)]
 
-  defp replace_ampersand(string) do
-    Regex.replace(~r/&(?!(lt|gt|quot|apos|amp);)/, string, "&amp;")
-  end
+  defp escape_entity(<<"amp;"::utf8, rest::binary>>), do: ["&amp;" | escape_string(rest)]
+  defp escape_entity(<<"lt;"::utf8, rest::binary>>), do: ["&lt;" | escape_string(rest)]
+  defp escape_entity(<<"gt;"::utf8, rest::binary>>), do: ["&gt;" | escape_string(rest)]
+  defp escape_entity(<<"quot;"::utf8, rest::binary>>), do: ["&quot;" | escape_string(rest)]
+  defp escape_entity(<<"apos;"::utf8, rest::binary>>), do: ["&apos;" | escape_string(rest)]
+  defp escape_entity(rest), do: ["&amp;" | escape_string(rest)]
 end
